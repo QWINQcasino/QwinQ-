@@ -1,0 +1,166 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QwinQ - Crash Game</title>
+  <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center py-10">
+  <h1 class="text-4xl font-bold text-yellow-400 mb-6">QwinQ - Crypto Crash</h1>  <!-- Admin Panel UI -->  <div class="bg-gray-800 p-4 rounded-xl shadow-lg w-full max-w-sm mb-6">
+    <h2 class="text-2xl font-semibold mb-2">Admin Login</h2>
+    <input id="adminUser" type="text" placeholder="Username" class="w-full p-2 mb-2 rounded bg-gray-700">
+    <input id="adminPass" type="password" placeholder="Password" class="w-full p-2 mb-2 rounded bg-gray-700">
+    <button onclick="adminLogin()" class="bg-pink-600 px-4 py-2 w-full rounded hover:bg-pink-700">Login</button>
+    <p id="adminStatus" class="text-sm mt-2"></p>
+    <div id="adminPanel" class="hidden mt-4">
+      <h3 class="text-lg font-bold mb-2">All Users</h3>
+      <ul id="userList" class="space-y-1 text-sm"></ul>
+    </div>
+  </div>  <!-- Existing Auth Section -->  <div class="bg-gray-800 p-4 rounded-xl shadow-lg w-full max-w-sm mb-6">
+    <h2 class="text-2xl font-semibold mb-2">Login / Sign Up</h2>
+    <input id="username" type="text" placeholder="Username" class="w-full p-2 mb-2 rounded bg-gray-700">
+    <input id="password" type="password" placeholder="Password" class="w-full p-2 mb-2 rounded bg-gray-700">
+    <input id="wallet" type="text" placeholder="Wallet (optional)" class="w-full p-2 mb-2 rounded bg-gray-700">
+    <div class="flex justify-between">
+      <button onclick="signup()" class="bg-green-600 px-4 py-2 rounded hover:bg-green-700">Sign Up</button>
+      <button onclick="login()" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Login</button>
+    </div>
+    <p id="authStatus" class="text-sm mt-2"></p>
+  </div>  <!-- Wallets -->  <div class="mb-6 text-center">
+    <h2 class="text-xl mb-2">Connect Wallet</h2>
+    <button onclick="connectMetaMask()" class="bg-purple-600 px-4 py-2 rounded hover:bg-purple-700 mb-2">MetaMask</button>
+    <button onclick="connectPhantom()" class="bg-indigo-600 px-4 py-2 rounded hover:bg-indigo-700">Phantom</button>
+    <p id="walletAddress" class="text-sm mt-2"></p>
+  </div>  <!-- Game UI -->  <div class="bg-gray-800 p-6 rounded-xl shadow-xl w-full max-w-md text-center">
+    <h2 class="text-2xl font-bold mb-4">Crash Game</h2>
+    <input id="bet" type="number" placeholder="Enter bet in ETH" class="w-full p-2 mb-3 rounded bg-gray-700">
+    <div class="flex justify-between">
+      <button onclick="startGame()" class="bg-yellow-500 px-4 py-2 rounded hover:bg-yellow-600">Start</button>
+      <button onclick="cashOut()" class="bg-red-500 px-4 py-2 rounded hover:bg-red-600">Cash Out</button>
+    </div>
+    <div id="multiplier" class="text-4xl font-bold my-4">1.00×</div>
+    <div id="status" class="text-sm"></div>
+  </div>  <!-- Leaderboard -->  <div class="mt-10 w-full max-w-sm">
+    <h2 class="text-xl font-bold mb-2 text-yellow-400">Leaderboard</h2>
+    <ul id="leaderboardList" class="bg-gray-800 p-4 rounded-xl space-y-1"></ul>
+  </div>  <script>
+    const apiUrl = 'https://your-api-endpoint/api'; // Replace with Render URL
+    let jwtToken = null;
+    let multiplier = 1.0, inGame = false, interval, crashPoint;
+
+    async function signup() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const wallet = document.getElementById('wallet').value;
+      const res = await fetch(`${apiUrl}/signup`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, password, wallet })
+      });
+      const data = await res.json();
+      document.getElementById('authStatus').textContent = data.message || data.error;
+    }
+
+    async function login() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const res = await fetch(`${apiUrl}/login`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.token) {
+        jwtToken = data.token;
+        document.getElementById('authStatus').textContent = 'Logged in!';
+        loadLeaderboard();
+      } else {
+        document.getElementById('authStatus').textContent = data.error;
+      }
+    }
+
+    async function adminLogin() {
+      const username = document.getElementById('adminUser').value;
+      const password = document.getElementById('adminPass').value;
+      const res = await fetch(`${apiUrl}/admin`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.token) {
+        document.getElementById('adminStatus').textContent = 'Admin logged in';
+        document.getElementById('adminPanel').classList.remove('hidden');
+        fetch(`${apiUrl}/leaderboard`).then(res => res.json()).then(users => {
+          const list = document.getElementById('userList');
+          list.innerHTML = '';
+          users.forEach(u => {
+            const li = document.createElement('li');
+            li.textContent = `${u.username} - ${u.score}×`;
+            list.appendChild(li);
+          });
+        });
+      } else {
+        document.getElementById('adminStatus').textContent = 'Access denied';
+      }
+    }
+
+    async function connectMetaMask() {
+      if (window.ethereum) {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        document.getElementById('walletAddress').textContent = `Connected: ${accounts[0]}`;
+      }
+    }
+
+    async function connectPhantom() {
+      if (window.solana && window.solana.isPhantom) {
+        const resp = await window.solana.connect();
+        document.getElementById('walletAddress').textContent = `Connected: ${resp.publicKey.toString()}`;
+      }
+    }
+
+    function startGame() {
+      if (inGame) return;
+      inGame = true; multiplier = 1.0;
+      crashPoint = (Math.random() * 5 + 1).toFixed(2);
+      interval = setInterval(() => {
+        multiplier += 0.01;
+        document.getElementById('multiplier').textContent = multiplier.toFixed(2) + '×';
+        if (multiplier >= crashPoint) {
+          clearInterval(interval);
+          document.getElementById('status').textContent = 'Crashed! You lost.';
+          inGame = false;
+        }
+      }, 100);
+    }
+
+    async function cashOut() {
+      if (!inGame) return;
+      clearInterval(interval);
+      document.getElementById('status').textContent = `Cashed out at ${multiplier.toFixed(2)}×`;
+      inGame = false;
+      if (jwtToken) {
+        await fetch(`${apiUrl}/score`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': jwtToken
+          },
+          body: JSON.stringify({ score: multiplier.toFixed(2) })
+        });
+        loadLeaderboard();
+      }
+    }
+
+    async function loadLeaderboard() {
+      const res = await fetch(`${apiUrl}/leaderboard`);
+      const data = await res.json();
+      const list = document.getElementById('leaderboardList');
+      list.innerHTML = '';
+      data.forEach(user => {
+        const li = document.createElement('li');
+        li.textContent = `${user.username}: ${user.score}×`;
+        list.appendChild(li);
+      });
+    }
+  </script></body>
+</html>
